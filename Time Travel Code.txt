@@ -1,0 +1,135 @@
+CREATE OR REPLACE DATABASE TIME_TRAVEL_DB;
+CREATE OR REPLACE SCHEMA TIME_TRAVEL_SCHEMA;
+
+drop database TIME_TRAVEL_DB;
+
+-- SET DATA_RETENTION_TIME_IN_DAYS PROPERTY FOR TIME TRAVEL
+
+create or replace table employees(employee_id number,
+                     salary number,
+                     manager_id number)
+                   data_retention_time_in_days=90;
+                     
+SHOW TABLES;
+                     
+create or replace table employees_test(employee_id number,
+                     salary number,
+                     manager_id number)
+                     data_retention_time_in_days=95;
+                     
+alter table employees set data_retention_time_in_days=30;
+
+SHOW TABLES;
+
+
+===============================================================================
+
+-- QUERY HISTORICAL DATA
+
+-- query selects historical data from a table as of the date and time represented by the specified timestamp:
+
+select current_timestamp();
+
+ALTER SESSION SET TIMEZONE = 'UTC';
+
+show parameters like 'timezone';
+
+select * from employees before(timestamp => '2021-07-07 14:56:21.245 +0000'::timestamp);
+
+INSERT INTO EMPLOYEES VALUES (1,10000,101),
+                            (2,20000,101),
+                            (3,30000,102),
+                            (4,10000,101);
+
+select * from employees before(timestamp => '2021-07-07 14:59:06.520 +0000'::timestamp);
+select * from employees at(timestamp => '2021-07-07 14:59:06.520 +0000'::timestamp);
+
+-- query selects historical data from a table as of 5 minutes ago:
+
+select * from employees at(offset => -60*5);
+select * from employees before(offset => -60*6);
+
+SELECT * FROM EMPLOYEES;
+
+INSERT INTO EMPLOYEES VALUES (5,50000,103);
+
+
+-- query selects historical data from a table up to, but not including any changes made by the specified statement:
+
+select * from employees before(statement => '019d6dec-0600-d23d-0053-210300038eb6');
+
+select * from employees at(statement => '019d6dec-0600-d23d-0053-210300038eb6');
+
+===============================================================================
+
+-- CLONE HISTORICAL OBJECTS
+
+-- create a duplicate of the object at a specified point in the object’s history
+
+select current_timestamp();
+
+
+-- following CREATE TABLE command creates a clone of a table as of the date and time represented by the specified timestamp:
+create or replace table restored_table clone employees
+  at(timestamp => '2021-07-07 15:14:51.758 +0000'::timestamp);
+  
+  select * from restored_table;
+  
+-- following CREATE SCHEMA command creates a clone of a schema and all its objects as they existed 1 hour before the current time:
+create or replace schema restored_schema clone TIME_TRAVEL_SCHEMA at(offset => -3600);
+
+-- following CREATE DATABASE command creates a clone of a database and all its objects as they existed prior to the completion of the specified statement:
+create or replace database restored_db clone time_travel_db
+  before(statement => '019d6dec-0600-d23d-0053-210300038eb6');
+
+===========================================================================================
+
+/*
+
+-- DROPPING AND RESTORING OBJECTS --
+
+When a table, schema, or database is dropped, it is not immediately overwritten or removed from the system. 
+Instead, it is retained for the data retention period for the object, during which time the object can be restored. 
+Once dropped objects are moved to Fail-safe, you cannot restore them.
+
+*/
+
+--show tables history like 'employees%' in demo_db.public;
+
+--show schemas history in demo_db;
+
+
+
+drop database TIME_TRAVEL_DB;
+
+drop schema TIME_TRAVEL_SCHEMA;
+
+drop table employees;
+
+show databases;
+
+show databases history;
+
+-- The output includes all dropped objects and an additional DROPPED_ON column, which displays the date and time when the object was dropped. 
+-- If an object has been dropped more than once, each version of the object is included as a separate row in the output.
+
+
+/*
+
+-- RESTORING OBJECTS --
+A dropped object that has not been purged from the system (i.e. the object is displayed in the SHOW <object_type> HISTORY output) 
+can be restored using the following commands:
+
+Calling UNDROP restores the object to its most recent state before the DROP command was issued.
+
+*/
+
+undrop table employees;
+
+undrop schema TIME_TRAVEL_SCHEMA;
+
+undrop database TIME_TRAVEL_DB;
+
+-- If an object with the same name already exists, UNDROP fails. 
+-- You must rename the existing object, which then enables you to restore the previous version of the object.
+
